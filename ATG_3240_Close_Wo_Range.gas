@@ -1,0 +1,142 @@
+Program.Sub.ScreenSU.Start
+Program.Sub.ScreenSU.End
+
+Program.Sub.Preflight.Start
+
+Variable.Global.sWOs.Declare(String)
+Variable.Global.bStarted.Declare(Boolean,True)
+Program.Sub.Preflight.End
+
+Program.Sub.Main.Start
+F.ODBC.Connection!conx.OpenConnection(V.Ambient.PDSN,V.Ambient.PUser,V.Ambient.PPass)
+
+F.Intrinsic.Control.CallSub(Browse_wos)
+F.Intrinsic.Control.CallSub(Confirm_wos)
+F.Intrinsic.Control.CallSub(Unload)
+
+Program.Sub.Main.End
+
+Program.Sub.Close_WOs.Start
+V.Local.sParams.Declare(String)
+V.Local.sQuery.Declare(String)
+V.Local.sRows.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.iC.Declare(Long)
+V.Local.sToday.Declare(String)
+
+F.Intrinsic.UI.InvokeWaitDialog("Closing Jobs...","Close Work Order Range")
+F.Intrinsic.String.Format(V.Ambient.Now,"MMDDYY",V.Local.sToday)
+F.Intrinsic.String.Split(V.Global.sWOs,"!*!",V.Local.sRows)
+F.Intrinsic.Control.For(V.Local.iC,0,V.Local.sRows.UBound,1)
+	F.Intrinsic.String.Split(V.Local.sRows(v.Local.iC),"*!*",V.Local.sLine)
+	F.Intrinsic.String.Concat("Closing ",V.Local.sLine(0),"-",V.Local.sLine(1),V.Local.sQuery)
+	F.Intrinsic.UI.ChangeWaitStatus(V.Local.sQuery,V.Local.iC,0,V.Local.sRows.UBound)
+	F.Intrinsic.String.Split(V.Local.sRows(v.Local.iC),"*!*",V.Local.sLine)
+	F.Intrinsic.String.Concat("UPDATE JOB_HEADER SET DATE_CLOSED='",V.Local.sToday,"' WHERE JOB='",V.Local.sLine(0),"' and suffix='",V.Local.sLine(1),"'",V.Local.sQuery)
+	F.ODBC.Connection!conx.Execute(V.Local.sQuery)
+F.Intrinsic.Control.Next(V.Local.iC)
+
+F.Intrinsic.String.Format(V.Ambient.Now,"YYYYMMDD",V.Local.sParams)
+F.Intrinsic.String.Concat("SI!*!",V.Local.sParams,"!*!1",V.Local.sParams)
+F.Intrinsic.UI.InvokeWaitDialog("Downloading Scheduling files...","Priority Booster")
+F.Global.General.CallWrapperSync(500000,V.Local.sParams)
+V.Local.sParams.Set("")
+F.Intrinsic.UI.InvokeWaitDialog("Running APS #83...","Priority Booster")
+F.Global.General.CallWrapperSync(500010,V.Local.sParams)
+F.Intrinsic.Debug.SetLA("APS 83 called.")
+
+Program.Sub.Close_WOs.End
+
+Program.Sub.Browse_WOs.Start
+V.Local.sSQL.Declare(String)
+V.Local.sCol.Declare(String)
+V.Local.sColW.Declare(String)
+V.Local.sRet.Declare(String)
+
+'Pass SQL Query
+V.Local.sSQL.Set("Select Job, Suffix, Description, part from JOB_HEADER where DATE_CLOSED='000000' or DATE_CLOSED='' ORDER BY Job asc, suffix asc")
+'Split Column Names into an array (VAR1, VAR2)
+F.Intrinsic.String.Split("Job*!*Suffix*!*Description*!*Part","*!*",V.Local.sCol)
+'Split Column widths into an array
+F.Intrinsic.String.Split("1200*!*1000*!*3400*!*3400","*!*",V.Local.sColW)
+
+'Enter prompt (VAR3), e.g., "Selct a part"
+F.Intrinsic.UI.SetBrowserHotTypeAhead(True)
+F.Intrinsic.UI.SetBrowserMultiSelect(True)
+F.Intrinsic.UI.Browser("Click & drag to highlight and/or double-click on rows to add them to the job range.","conx",V.Local.sSQL,V.Local.sCol,V.Local.sColW,V.Local.sRet)
+
+F.Intrinsic.Control.If(V.Local.sRet,=,"***CANCEL***")
+	F.Intrinsic.Control.If(V.Global.bStarted,=,True)
+		F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Else
+	V.Global.sWOs.Set(V.Local.sRet)
+F.Intrinsic.Control.EndIf
+V.Global.bStarted.Set(False)
+
+Program.Sub.Browse_WOs.End
+
+Program.Sub.Unload.Start
+F.ODBC.Connection!conx.Close
+f.Intrinsic.Control.End
+
+Program.Sub.Unload.End
+
+Program.Sub.Confirm_WOs.Start
+V.Local.sMsg.Declare(String)
+V.Local.sRows.Declare(String)
+V.Local.sLine.Declare(String)
+V.Local.sRet.Declare(String)
+V.Local.iC.Declare(Long)
+
+F.Intrinsic.Control.DoUntil(V.Ambient.AltBoxClick,=,3)
+	F.Intrinsic.Control.DoUntil(V.Global.sWOs,<>,"")
+		F.Intrinsic.Control.CallSub(Browse_wos)
+	F.Intrinsic.Control.Loop
+
+	F.Intrinsic.String.Split(V.Global.sWOs,"!*!",V.Local.sRows)
+	F.Intrinsic.Control.For(V.Local.iC,0,V.Local.sRows.UBound,1)
+		F.Intrinsic.String.Split(V.Local.sRows(v.Local.iC),"*!*",V.Local.sLine)
+		F.Intrinsic.Control.If(V.Local.sMsg,=,"")
+			F.Intrinsic.String.Concat(V.Local.sLine(0),"-",V.Local.sLine(1),V.Ambient.Tab,"Description: ",V.Local.sLine(2),V.Ambient.Tab,"Part:",V.Local.sLine(3),V.Local.sMsg)
+		F.Intrinsic.Control.Else
+			F.Intrinsic.String.Concat(V.Local.sMsg,V.Ambient.NewLine,V.Local.sLine(0),"-",V.Local.sLine(1),V.Ambient.Tab,"Description: ",V.Local.sLine(2),V.Ambient.Tab,"Part:",V.Local.sLine(3),V.Local.sMsg)
+		F.Intrinsic.Control.EndIf
+	F.Intrinsic.Control.Next(V.Local.iC)
+	F.Intrinsic.String.Concat("Please confirm that the following jobs will be closed: ",V.Ambient.NewLine,V.Ambient.NewLine,V.Local.sMsg,V.Local.sMsg)
+	F.Intrinsic.UI.MsgBoxExt("Confirm jobs to close",V.Local.sMsg,"24*!*Close*!*Re-select",10000,10000)
+
+	F.Intrinsic.Control.If(V.Ambient.AltBoxClick,=,-1)
+		F.Intrinsic.Control.CallSub(Unload)
+	F.Intrinsic.Control.ElseIf(V.Ambient.AltBoxClick,=,4)
+		F.Intrinsic.Control.CallSub(Browse_wos)
+	F.Intrinsic.Control.EndIf
+F.Intrinsic.Control.Loop
+
+F.Intrinsic.Control.If(V.Ambient.AltBoxClick,=,3)
+	F.Intrinsic.Control.CallSub(Close_wos)
+F.Intrinsic.Control.EndIf
+
+Program.Sub.Confirm_WOs.End
+
+program.sub.f_len_unload.start
+
+program.sub.f_len_unload.end
+
+Program.Sub.Comments.Start
+${$0$}$Close Work Order Range$}$SMC$}$2/15/2012
+${$1$}$$}$$}$0$}$-1$}$Custom Menu Item$}$2/15/2012 4:10:17 PM$}$Shop Floor Control > File
+${$2$}$$}$$}$1$}$0$}$500010$}$2/15/2012 4:13:02 PM$}$APS #83
+${$2$}$$}$$}$0$}$0$}$500000$}$2/15/2012 4:10:17 PM$}$Download Schedule files
+${$3$}$0$}$$}$-1$}$-1$}$$}$1/1/1900$}$Customer: Precision Cut Industries
+Quote: 3203 - 0
+
+Description:
+Close the Work Orders with in a specified range.
+
+Spec:
+This program will provide the user with a screen to select a range of work orders from the open work order table (JOB_HEADER) in Global Shop.  The user will specify a date that will be written as the close date (DATE_CLOSED) on the range of work orders.  The CLOSED_FLAG will also be set to 'Y'.
+
+In order for APS to reflect these manual job closures, the scheduling data will need to be re-downloaded, and globally rescheduled.
+Program.Sub.Comments.End
+
